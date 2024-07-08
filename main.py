@@ -5,7 +5,12 @@ from botpy import BotAPI
 from botpy.ext.command_util import Commands
 from botpy.manage import GroupManageEvent
 from botpy.message import GroupMessage
+import time
+import sqlite3
+from datetime import datetime
 import aiohttp
+import random
+import json
 
 import r
 
@@ -18,7 +23,7 @@ async def on_sitmc_backend_error(message: GroupMessage):
     await message.reply(content=f"服务无响应，请稍后再试，若此问题依然存在，请联系机器人管理员")
 
 
-@Commands("查天气")
+@Commands("校园天气")
 async def query_weather(api: BotAPI, message: GroupMessage, params=None):
     async with aiohttp.ClientSession() as session:
         fx_res, xh_res = await asyncio.gather(
@@ -74,8 +79,245 @@ async def query_weather(api: BotAPI, message: GroupMessage, params=None):
         return True
 
 
+@Commands("服务器状态")
+async def query_sitmc_server(api: BotAPI, message: GroupMessage, params=None):
+    async with session.post(f"https://mc.sjtu.cn/custom/serverlist/?query=play.sitmc.club") as res:
+        result = await res.json()
+        if res.ok:
+            server_info = result
+            description = server_info.get('description_raw', {}).get('extra', [{}])[0].get('text', '无描述')
+            players_max = server_info.get('players', {}).get('max', '未知')
+            players_online = server_info.get('players', {}).get('online', '未知')
+            version = server_info.get('version', '未知')
+
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            random_image = random.choice(["1.jpg", "2.jpg", "3.jpg"])
+            image_url = f"https://tietu.mclists.cn/banner/purple/7685/{random_image}"
+
+            uploadmedia = await api.post_group_file(
+                group_openid=message.group_openid,
+                file_type=1,
+                url=image_url
+            )
+
+            reply_content = (
+                f"\n"
+                f"服务器名称: SIT-Minecraft\n"
+                f"描述: {description}\n"
+                f"在线玩家: {players_online}/{players_max}\n"
+                f"版本: {version}\n"
+                f"查询时间: {timestamp}"
+            )
+
+            await message.reply(
+                content=reply_content,
+                msg_type=7,
+                media=uploadmedia
+            )
+        else:
+            error_content = (
+                f"查询SITMC服务器信息失败\n"
+                f"状态码: {res.status}\n"
+                f"响应内容: {result}"
+            )
+            await message.reply(content=error_content)
+        return True
+
+
+@Commands("一言")
+async def daily_word(api: BotAPI, message: GroupMessage, params=None):
+    daily_word = f"https://www.mxnzp.com/api/daily_word/recommend?count=1&app_id={r.api_app_id}&app_secret={r.api_app_secret}"
+    async with session.post(daily_word) as res:
+        result = await res.json()
+        if res.ok:
+            content = result['data'][0]['content']
+
+            reply_content = (
+                f"\n"
+                f"{content}"
+            )
+
+            await message.reply(content=reply_content)
+        else:
+            error_content = (
+                f"获取一言失败"
+            )
+            await message.reply(content=error_content)
+        return True
+
+
+@Commands("今日运势")
+async def jrys(api: BotAPI, message: GroupMessage, params=None):
+    conn = sqlite3.connect('user_numbers.db')
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_numbers (
+            user_id TEXT PRIMARY KEY,
+            random_number INTEGER,
+            number INTEGER,
+            date TEXT
+        )
+    ''')
+    conn.commit()
+
+    with open('jrys.json', 'r', encoding='utf-8') as file:
+        jrys_data = json.load(file)
+
+    def get_fortune_number(lucky_star):
+        star_count = lucky_star.count('★')
+        if star_count == 0:
+            return random.randint(0, 10)
+        elif star_count == 1:
+            return random.randint(5, 15)
+        elif star_count == 2:
+            return random.randint(10, 25)
+        elif star_count == 3:
+            return random.randint(25, 40)
+        elif star_count == 4:
+            return random.randint(40, 55)
+        elif star_count == 5:
+            return random.randint(55, 70)
+        elif star_count == 6:
+            return random.randint(70, 85)
+        elif star_count == 7:
+            return random.randint(85, 100)
+        else:
+            return None
+
+    def get_user_number(user):
+        today_date = datetime.now().strftime('%Y-%m-%d')
+
+        cursor.execute('SELECT random_number, number FROM user_numbers WHERE user_id = ? AND date = ?',
+                       (user, today_date))
+        row = cursor.fetchone()
+
+        if row:
+            random_number = row[0]
+            number = row[1]
+            fortune_data = jrys_data[str(random_number)][0]
+        else:
+            while True:
+                random_number = random.randint(1, 1433)
+                fortune_data = jrys_data.get(str(random_number))
+
+                if fortune_data:
+                    fortune_data = fortune_data[0]
+                    lucky_star = fortune_data['luckyStar']
+                    number = get_fortune_number(lucky_star)
+
+                    if number is not None:
+                        break
+
+            cursor.execute('''
+                INSERT OR REPLACE INTO user_numbers (user_id, random_number, number, date) 
+                VALUES (?, ?, ?, ?)
+            ''', (user, random_number, number, today_date))
+            conn.commit()
+
+        return random_number, number, fortune_data
+
+    user = f"{message.author.member_openid}"
+    random_number, assigned_number, fortune_data = get_user_number(user)
+
+    reply = (
+        f"\n"
+        f"今日运势：{fortune_data['fortuneSummary']}\n"
+        f"幸运星象：{fortune_data['luckyStar']}\n"
+        f"运势评述：{fortune_data['signText']}\n"
+        f"评述解读：{fortune_data['unSignText']}"
+    )
+
+    await message.reply(content=reply)
+    return True
+
+
+@Commands("今日人品")
+async def jrrp(api: BotAPI, message: GroupMessage, params=None):
+    conn = sqlite3.connect('user_numbers.db')
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_numbers (
+            user_id TEXT PRIMARY KEY,
+            random_number INTEGER,
+            number INTEGER,
+            date TEXT
+        )
+    ''')
+    conn.commit()
+
+    with open('jrys.json', 'r', encoding='utf-8') as file:
+        jrys_data = json.load(file)
+
+    def get_fortune_number(lucky_star):
+        star_count = lucky_star.count('★')
+        if star_count == 0:
+            return random.randint(0, 10)
+        elif star_count == 1:
+            return random.randint(5, 15)
+        elif star_count == 2:
+            return random.randint(10, 25)
+        elif star_count == 3:
+            return random.randint(25, 40)
+        elif star_count == 4:
+            return random.randint(40, 55)
+        elif star_count == 5:
+            return random.randint(55, 70)
+        elif star_count == 6:
+            return random.randint(70, 85)
+        elif star_count == 7:
+            return random.randint(85, 100)
+        else:
+            return None
+
+    def get_user_number(user):
+        today_date = datetime.now().strftime('%Y-%m-%d')
+
+        cursor.execute('SELECT random_number, number FROM user_numbers WHERE user_id = ? AND date = ?',
+                       (user, today_date))
+        row = cursor.fetchone()
+
+        if row:
+            random_number = row[0]
+            number = row[1]
+            fortune_data = jrys_data[str(random_number)][0]
+        else:
+            while True:
+                random_number = random.randint(1, 1433)
+                fortune_data = jrys_data.get(str(random_number))
+
+                if fortune_data:
+                    fortune_data = fortune_data[0]
+                    lucky_star = fortune_data['luckyStar']
+                    number = get_fortune_number(lucky_star)
+
+                    if number is not None:
+                        break
+
+            cursor.execute('''
+                INSERT OR REPLACE INTO user_numbers (user_id, random_number, number, date) 
+                VALUES (?, ?, ?, ?)
+            ''', (user, random_number, number, today_date))
+            conn.commit()
+
+        return number
+
+    user = f"{message.author.member_openid}"
+    assigned_number = get_user_number(user)
+
+    reply = f"今日人品值：{assigned_number}"
+
+    await message.reply(content=reply)
+    return True
+
+
 handlers = [
-    query_weather
+    query_weather,
+    query_sitmc_server,
+    daily_word,
+    jrrp,
+    jrys
 ]
 
 
@@ -84,11 +326,10 @@ class SitmcClient(botpy.Client):
         _log.info(f"robot[{self.robot.name}] is ready.")
 
     async def on_group_at_message_create(self, message: GroupMessage):
-        _log.info(f"Received: {message.content}")
         for handler in handlers:
             if await handler(api=self.api, message=message):
                 return
-        await message.reply(content=f'echo "{message.content}"')
+        await message.reply(content=f"不明白你在说什么哦(๑• . •๑)")
 
     async def on_group_add_robot(self, message: GroupManageEvent):
         await self.api.post_group_message(group_openid=message.group_openid, content="欢迎使用SIT-Minecraft QQ Bot服务")
