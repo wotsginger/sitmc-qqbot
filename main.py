@@ -12,6 +12,19 @@ import aiohttp
 import random
 import json
 
+from io import BytesIO
+from typing import Optional, Dict, Any, List
+
+from PIL import Image, ImageDraw
+from enum import Enum
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import InputFile
+from aiogram.contrib.middlewares.logging import LoggingMiddleware
+from aiogram.utils import executor
+
+from wordle.data_source import legal_word, random_word, load_font, save_png
+from wordle.utils import Wordle, GuessResult
+
 import r
 
 _log = botpy.logging.get_logger()
@@ -310,6 +323,157 @@ async def jrrp(api: BotAPI, message: GroupMessage, params=None):
 
     await message.reply(content=reply)
     return True
+
+@Commands("像素上应")
+async def PixelSIT(api: BotAPI, message: GroupMessage, params=None):
+    pass
+
+"""
+games: Dict[str, Wordle] = {}
+timers: Dict[str, asyncio.TimerHandle] = {}
+
+
+def game_is_running(chat_id: str) -> bool:
+    return chat_id in games
+
+
+def game_not_running(chat_id: str) -> bool:
+    return chat_id not in games
+
+
+def stop_game(chat_id: str):
+    if timer := timers.pop(chat_id, None):
+        timer.cancel()
+    games.pop(chat_id, None)
+
+
+async def stop_game_timeout(chat_id: str):
+    stop_game(chat_id)
+
+
+def set_timeout(chat_id: str, timeout: float = 300):
+    if timer := timers.get(chat_id, None):
+        timer.cancel()
+    loop = asyncio.get_running_loop()
+    timer = loop.call_later(
+        timeout, lambda: asyncio.ensure_future(stop_game_timeout(chat_id))
+    )
+    timers[chat_id] = timer
+
+
+@Commands("Wordle")
+async def start_game(api: BotAPI, message: GroupMessage, params=None):
+    params = {"raw": params}
+    chat_id = message.group_openid
+    if game_is_running(chat_id):
+        await message.reply(content=f"游戏已经在进行中")
+        return
+
+    args = params["raw"].split()
+    length = 5
+    dictionary = "CET4"
+    if len(args) > 0:
+        try:
+            length = int(args[0])
+            if length < 3 or length > 8:
+                await message.reply(content="单词长度应在3~8之间")
+                return
+        except ValueError:
+            await message.reply(content=f"无效的单词长度")
+            return
+
+    dic_list=[f"CET-4", f"CET-6"]
+
+    if len(args) > 1:
+        dictionary = args[1]
+        if dictionary not in dic_list:
+            await message.reply(content=f"支持的词典：" + ", ".join(dic_list))
+            return
+
+    word, meaning = random_word(dictionary, length)
+    game = Wordle(word, meaning)
+
+    games[chat_id] = game
+    set_timeout(chat_id)
+
+    image_url = f""
+
+    uploadmedia = await api.post_group_file(
+        group_openid=message.group_openid,
+        file_type=1,
+        url=image_url
+    )
+
+    msg = f"你有{game.rows}次机会猜出单词，单词长度为{game.length}，请发送单词"
+    await message.reply(
+        content=msg,
+        msg_type=7,
+        media=uploadmedia
+    )
+
+
+# 提示指令处理
+async def give_hint(message: types.Message):
+    chat_id = message.chat.id
+    if game_not_running(chat_id):
+        await message.reply("当前没有正在进行的游戏。")
+        return
+
+    game = games[chat_id]
+    set_timeout(chat_id)
+
+    hint = game.get_hint()
+    if not hint.replace("*", ""):
+        await message.reply("你还没有猜对过一个字母哦~再猜猜吧~")
+        return
+
+    await bot.send_photo(chat_id, InputFile(game.draw_hint(hint)))
+
+
+async def stop_current_game(message: types.Message):
+    chat_id = message.chat.id
+    if game_not_running(chat_id):
+        await message.reply("当前没有正在进行的游戏。")
+        return
+
+    game = games[chat_id]
+    stop_game(chat_id)
+
+    msg = "游戏已结束"
+    if len(game.guessed_words) >= 1:
+        msg += f"\n{game.result}"
+    await message.reply(msg)
+
+
+# 单词猜测处理
+async def handle_guess(message: types.Message):
+    chat_id = message.chat.id
+    game = games[chat_id]
+    set_timeout(chat_id)
+
+    word = message.text.lower()
+    result = game.guess(word)
+
+    if result == GuessResult.WIN:
+        stop_game(chat_id)
+        msg = f"恭喜你猜出了单词！\n{game.result}"
+        await message.reply(msg)
+        await bot.send_photo(chat_id, InputFile(game.draw()))
+    elif result == GuessResult.LOSS:
+        stop_game(chat_id)
+        msg = f"很遗憾，没有人猜出来呢\n{game.result}"
+        await message.reply(msg)
+        await bot.send_photo(chat_id, InputFile(game.draw()))
+    elif result == GuessResult.DUPLICATE:
+        await message.reply("你已经猜过这个单词了呢")
+    elif result == GuessResult.ILLEGAL:
+        await message.reply(f"你确定 {word} 是一个合法的单词吗？")
+    else:
+        await bot.send_photo(chat_id, InputFile(game.draw()))
+
+    return True
+
+"""
 
 
 handlers = [
