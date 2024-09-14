@@ -22,3 +22,7 @@ if weather_api_token is None:
 api_app_secret = os.getenv("API_APP_SECRET")
 if weather_api_token is None:
     raise Exception('Missing "API_APP_SECRET" environment variable for your AppSecret')
+
+forum_token = os.getenv("FORUM_TOKEN")
+if forum_token is None:
+    raise Exception('Missing "FORUM_TOKEN" environment variable for your AppSecret')
