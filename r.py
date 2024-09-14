@@ -26,3 +26,7 @@ if weather_api_token is None:
 forum_token = os.getenv("FORUM_TOKEN")
 if forum_token is None:
     raise Exception('Missing "FORUM_TOKEN" environment variable for your AppSecret')
+
+sitmc_server = os.getenv("SITMC_SERVER")
+if sitmc_server is None:
+    raise Exception('Missing "SITMC_SERVER" environment variable for your AppSecret')

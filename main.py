@@ -1,6 +1,7 @@
 import asyncio
-
 import botpy
+import os
+import requests
 from botpy import BotAPI
 from botpy.ext.command_util import Commands
 from botpy.manage import GroupManageEvent
@@ -11,12 +12,27 @@ from datetime import datetime
 import aiohttp
 import random
 import json
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from PIL import Image
+
 
 import r
 
 _log = botpy.logging.get_logger()
 
 session: aiohttp.ClientSession
+
+
+def upload_file(file_path, remote_path):
+    upload_url = "https://temp.sitmc.club/admin"
+
+    with open(file_path, 'rb') as file:
+        files = {'file': file}
+        headers = {'Authorization': r.sitmc_server}
+        response = requests.post(upload_url, files=files, data={'path': remote_path}, headers=headers)
+
+    return True
 
 
 async def on_sitmc_backend_error(message: GroupMessage):
@@ -331,13 +347,54 @@ async def forum_hot_discussion(api: BotAPI, message: GroupMessage, params=None, 
             await message.reply(content=reply_content)
     return True
 
+@Commands("mcci")
+async def mcci(api: BotAPI, message: GroupMessage, params=None, requests=None):
+    params = {"raw": params}
+    playername = params["raw"].lower()
+    url = f"https://stats.sirarchibald.dev/player/" + playername
+
+    save_path = "temp/mccisland"
+    os.makedirs(save_path, exist_ok=True)
+
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+
+    driver = webdriver.Chrome(options=chrome_options)
+    driver.set_window_size(1300, 1000)
+    driver.get(url)
+    driver.implicitly_wait(5)
+
+    full_screenshot = os.path.join(save_path, f"full_{playername}.png")
+    driver.save_screenshot(full_screenshot)
+    left = 14
+    top = 124
+    right = 478 + left
+    bottom = 708 + top
+
+    image = Image.open(full_screenshot)
+    final_screenshot = image.crop((left, top, right, bottom))
+    final_screenshot_path = os.path.join(save_path, f"{playername}.png")
+    final_screenshot.save(final_screenshot_path)
+
+    driver.quit()
+
+    file_path = save_path+ f"/{playername}.png"
+    remote_path = f"mccisland/{playername}.png"
+    print(file_path,remote_path)
+
+    result = upload_file(file_path, remote_path)
+    return True
+
 handlers = [
     query_weather,
     query_sitmc_server,
     daily_word,
     jrrp,
     jrys,
-    forum_hot_discussion
+    forum_hot_discussion,
+    mcci
 ]
 
 
