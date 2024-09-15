@@ -1,7 +1,10 @@
 import asyncio
+from lib2to3.fixes.fix_input import context
+
 import botpy
 import os
 import requests
+from bs4 import BeautifulSoup
 from botpy import BotAPI
 from botpy.ext.command_util import Commands
 from botpy.manage import GroupManageEvent
@@ -12,10 +15,12 @@ from datetime import datetime
 import aiohttp
 import random
 import json
+
+from certifi import contents
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from PIL import Image
-
+from selenium.webdriver.support.expected_conditions import element_selection_state_to_be
 
 import r
 
@@ -24,13 +29,21 @@ _log = botpy.logging.get_logger()
 session: aiohttp.ClientSession
 
 
-def upload_file(file_path, remote_path):
-    upload_url = "https://temp.sitmc.club/admin"
 
-    with open(file_path, 'rb') as file:
-        files = {'file': file}
-        headers = {'Authorization': r.sitmc_server}
-        response = requests.post(upload_url, files=files, data={'path': remote_path}, headers=headers)
+def upload_file(file_path, remote_path, token):
+    upload_url = "https://temp.sitmc.club/admin"
+    data = {
+        'path': remote_path,
+    }
+    files = {
+        'file': open(file_path, 'rb')
+    }
+    headers = {
+        'Authorization': token
+    }
+
+
+    response = requests.put(upload_url, data=data, files=files, headers=headers)
 
     return True
 
@@ -351,41 +364,76 @@ async def forum_hot_discussion(api: BotAPI, message: GroupMessage, params=None, 
 async def mcci(api: BotAPI, message: GroupMessage, params=None, requests=None):
     params = {"raw": params}
     playername = params["raw"].lower()
-    url = f"https://stats.sirarchibald.dev/player/" + playername
+    url = "https://stats.sirarchibald.dev/player/" + playername
 
-    save_path = "temp/mccisland"
-    os.makedirs(save_path, exist_ok=True)
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            html = await response.text()
 
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
+        soup = BeautifulSoup(html, 'html.parser')
+        error_message = soup.find("p", class_="text-center text-xl text-neutral-900 dark:text-neutral-100 py-2")
 
-    driver = webdriver.Chrome(options=chrome_options)
-    driver.set_window_size(1300, 1000)
-    driver.get(url)
-    driver.implicitly_wait(5)
 
-    full_screenshot = os.path.join(save_path, f"full_{playername}.png")
-    driver.save_screenshot(full_screenshot)
-    left = 14
-    top = 124
-    right = 478 + left
-    bottom = 708 + top
+    if error_message and "I couldn't find any data for that player!" in error_message.text:
+        await message.reply(content="我在Mccisland找不到这个玩家的数据哦(；′⌒`)")
+    else:
+        save_path = "temp/mccisland"
+        os.makedirs(save_path, exist_ok=True)
 
-    image = Image.open(full_screenshot)
-    final_screenshot = image.crop((left, top, right, bottom))
-    final_screenshot_path = os.path.join(save_path, f"{playername}.png")
-    final_screenshot.save(final_screenshot_path)
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--force-device-scale-factor=1.5")
 
-    driver.quit()
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.set_window_size(1300, 1000)
+        driver.get(url)
+        driver.implicitly_wait(5)
 
-    file_path = save_path+ f"/{playername}.png"
-    remote_path = f"mccisland/{playername}.png"
-    print(file_path,remote_path)
+        # 保存完整截图
+        full_screenshot = os.path.join(save_path, f"full_{playername}.png")
+        driver.save_screenshot(full_screenshot)
 
-    result = upload_file(file_path, remote_path)
+        # 裁剪截图
+        left, top, right, bottom = 14, 124, 478 + 14, 708 + 124
+        image = Image.open(full_screenshot)
+        final_screenshot = image.crop((left, top, right, bottom))
+        final_screenshot_path = os.path.join(save_path, f"{playername}.png")
+        final_screenshot.save(final_screenshot_path)
+
+        driver.quit()
+
+        file_path = save_path + f"/{playername}.png"
+        remote_path = f"mccisland/{playername}.png"
+        token = r.sitmc_server
+
+        result = upload_file(file_path, remote_path, token)
+        print(result)
+
+        image_url = f"https://temp.sitmc.club/download/mccisland/{playername}.png"
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        uploadmedia = await api.post_group_file(
+            group_openid=message.group_openid,
+            file_type=1,
+            url=image_url
+        )
+
+        await message.reply(
+            msg_type=7,
+            media=uploadmedia
+        )
     return True
+
+'''
+html = await response.text()
+print(html)
+if "I couldn't find any data for that player!" in html:
+    await message.reply(content="我在Mccisland找不到这个玩家的数据哦(；′⌒`)")
+else:
+'''
+
+
 
 handlers = [
     query_weather,
@@ -394,7 +442,7 @@ handlers = [
     jrrp,
     jrys,
     forum_hot_discussion,
-    mcci
+    mcci,
 ]
 
 
