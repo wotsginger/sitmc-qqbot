@@ -425,15 +425,6 @@ async def mcci(api: BotAPI, message: GroupMessage, params=None, requests=None):
         )
     return True
 
-'''
-html = await response.text()
-print(html)
-if "I couldn't find any data for that player!" in html:
-    await message.reply(content="我在Mccisland找不到这个玩家的数据哦(；′⌒`)")
-else:
-'''
-
-
 
 handlers = [
     query_weather,
