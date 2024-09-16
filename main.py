@@ -426,6 +426,11 @@ async def mcci(api: BotAPI, message: GroupMessage, params=None, requests=None):
     return True
 
 
+@Commands("帮助")
+async def help(api: BotAPI, message: GroupMessage, params=None, requests=None):
+    await message.reply(content="如果遇到任何问题需要帮助，请联系群管理员哦~")
+    return True
+
 handlers = [
     query_weather,
     query_sitmc_server,
@@ -434,6 +439,7 @@ handlers = [
     jrys,
     forum_hot_discussion,
     mcci,
+    help
 ]
 
 
