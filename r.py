@@ -30,3 +30,15 @@ if forum_token is None:
 sitmc_server = os.getenv("SITMC_SERVER")
 if sitmc_server is None:
     raise Exception('Missing "SITMC_SERVER" environment variable for your AppSecret')
+
+rcon_host = os.getenv("RCON_HOST")
+if rcon_host is None:
+    raise Exception('Missing "RCON_HOST" environment variable for your AppSecret')
+
+rcon_password = os.getenv("RCON_PASSWORD")
+if rcon_password is None:
+    raise Exception('Missing "RCON_PASSWORD" environment variable for your AppSecret')
+
+rcon_port = os.getenv("RCON_PORT")
+if rcon_port is None:
+    raise Exception('Missing "RCON_PORT" environment variable for your AppSecret')

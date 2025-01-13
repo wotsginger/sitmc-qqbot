@@ -5,6 +5,7 @@ from pickle import FALSE
 import botpy
 import re
 import os
+from mcrcon import MCRcon
 import requests
 from bs4 import BeautifulSoup
 from botpy import BotAPI
@@ -388,6 +389,68 @@ async def mcci(api: BotAPI, message: GroupMessage, params=None, requests=None):
     return True
 
 
+import sqlite3
+import os
+import json
+
+@Commands("world")
+async def world(api: BotAPI, message: GroupMessage, params=None, requests=None):
+    conn = sqlite3.connect('minecraft.db')
+    cursor = conn.cursor()
+    user_id = f"{message.author.member_openid}"
+    content = f"{message.content}".strip()
+
+    # 检查 minecraft.json 是否存在
+    if not os.path.exists('minecraft.json'):
+        with open('minecraft.json', 'w') as json_file:
+            json.dump({"op": []}, json_file)
+
+    # 加载 minecraft.json 数据
+    with open('minecraft.json', 'r') as json_file:
+        minecraft_data = json.load(json_file)
+
+    # 查询用户绑定的 game_id
+    cursor.execute("SELECT game_id FROM users WHERE user_id = ?", (user_id,))
+    user_data = cursor.fetchone()
+
+    if not user_data:
+        await message.reply(content="请先输入 /绑定 绑定您的账户")
+        return
+
+    game_id = user_data[0]
+
+    if game_id in minecraft_data['op']:
+        # 解析 content 的值
+        try:
+            _, target_game_id, world = content.split()
+        except ValueError:
+            await message.reply(content="命令格式错误，请使用 /world [id] [world]")
+            return
+
+        cursor.execute(
+            "UPDATE users SET world = ?, permission = 'admin' WHERE game_id = ?",
+            (world, target_game_id)
+        )
+        conn.commit()
+
+        try:
+            with MCRcon(r.rcon_host, r.rcon_password, port={r.rcon_port}) as mcr:
+                command = f"whitelist add {target_game_id}"
+                response = mcr.command(command)
+                await message.reply(content=f"RCON 命令执行成功: {response}")
+        except Exception as e:
+            await message.reply(content=f"RCON 命令执行失败: {str(e)}")
+
+        await message.reply(content=f"成功为游戏ID {target_game_id} 设置世界 {world} 管理员权限")
+    else:
+        await message.reply(content="你的游戏ID不在管理员列表中，请联系管理员设置世界管理员")
+
+    # 关闭数据库连接
+    conn.close()
+    return True
+
+
+
 @Commands("绑定")
 async def bind(api: BotAPI, message: GroupMessage, params=None, requests=None):
     conn = sqlite3.connect('minecraft.db')
@@ -453,8 +516,35 @@ async def builder(api: BotAPI, message: GroupMessage, params=None, requests=None
 
 @Commands("admin")
 async def admin(api: BotAPI, message: GroupMessage, params=None, requests=None):
+    conn = sqlite3.connect('minecraft.db')
+    user_id = f"{message.author.member_openid}"
+    cursor = conn.cursor()
+
+    # 检查 minecraft.json 是否存在
+    if not os.path.exists('minecraft.json'):
+        with open('minecraft.json', 'w') as json_file:
+            json.dump({"op": []}, json_file)
+
+    with open('minecraft.json', 'r') as json_file:
+        minecraft_data = json.load(json_file)
+
+    cursor.execute("SELECT game_id FROM users WHERE user_id = ?", (user_id,))
+    user_data = cursor.fetchone()
+
+    if user_data:
+        game_id = user_data[0]
+
+        # 检查该 game_id 是否在 minecraft.json 的 'op' 列表中
+        if game_id in minecraft_data['op']:
+            await message.reply(content="你已经是管理员啦！")
+        else:
+            await message.reply(content="你的游戏ID不在管理员列表中。")
+    else:
+        # 如果在数据库中找不到该用户，提示用户先绑定账户
+        await message.reply(content="请先输入/绑定绑定账户")
+
+
     await message.reply(content="如果遇到任何问题需要帮助，请联系群管理员哦~")
-    return True
 
 
 @Commands("visitor")
