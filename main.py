@@ -1,7 +1,9 @@
 import asyncio
 from lib2to3.fixes.fix_input import context
+from pickle import FALSE
 
 import botpy
+import re
 import os
 import requests
 from bs4 import BeautifulSoup
@@ -110,47 +112,7 @@ async def query_weather(api: BotAPI, message: GroupMessage, params=None):
 
 @Commands("服务器状态")
 async def query_sitmc_server(api: BotAPI, message: GroupMessage, params=None):
-    async with session.post(f"https://mc.sjtu.cn/custom/serverlist/?query=play.sitmc.club") as res:
-        result = await res.json()
-        if res.ok:
-            server_info = result
-            description = server_info.get('description_raw', {}).get('extra', [{}])[0].get('text', '无描述')
-            players_max = server_info.get('players', {}).get('max', '未知')
-            players_online = server_info.get('players', {}).get('online', '未知')
-            version = server_info.get('version', '未知')
-
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-            random_image = random.choice(["1.jpg", "2.jpg", "3.jpg"])
-            image_url = f"https://tietu.mclists.cn/banner/purple/7685/{random_image}"
-
-            uploadmedia = await api.post_group_file(
-                group_openid=message.group_openid,
-                file_type=1,
-                url=image_url
-            )
-
-            reply_content = (
-                f"\n"
-                f"服务器名称: SIT-Minecraft\n"
-                f"描述: {description}\n"
-                f"在线玩家: {players_online}/{players_max}\n"
-                f"版本: {version}\n"
-                f"查询时间: {timestamp}"
-            )
-
-            await message.reply(
-                content=reply_content,
-                msg_type=7,
-                media=uploadmedia
-            )
-        else:
-            error_content = (
-                f"查询SITMC服务器信息失败\n"
-                f"状态码: {res.status}\n"
-                f"响应内容: {result}"
-            )
-            await message.reply(content=error_content)
-        return True
+    await query_sitmc_server(api, message, params)
 
 
 @Commands("一言")
@@ -343,7 +305,7 @@ async def jrrp(api: BotAPI, message: GroupMessage, params=None):
 
 @Commands("十大热帖")
 async def forum_hot_discussion(api: BotAPI, message: GroupMessage, params=None, requests=None):
-    url = "https://forum.mysit.life/api/discussions?sort=-commentCount&page%5Blimit%5D=10"
+    url = "https://sit.xiaoying.life/api/discussions?sort=-commentCount&page%5Blimit%5D=10"
     headers = {
         "Authorization": "Token " + r.forum_token
     }
@@ -426,6 +388,81 @@ async def mcci(api: BotAPI, message: GroupMessage, params=None, requests=None):
     return True
 
 
+@Commands("绑定")
+async def bind(api: BotAPI, message: GroupMessage, params=None, requests=None):
+    conn = sqlite3.connect('minecraft.db')
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS minecraft (
+            userid TEXT PRIMARY KEY,
+            permission TEXT,
+            gameid TEXT,
+            world TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+    user_id = f"{message.author.member_openid}"
+    content = f"{message.content}".strip()
+    print(content)
+    if " " in content:
+        command, *rest = content.split(" ", 1)
+        game_id = rest[0].strip() if rest else ""
+
+        if not re.fullmatch(r"[A-Za-z0-9_]{3,16}", game_id):
+            await message.reply(content="ID只能包含字母、数字或下划线，长度应在3到16个字符之间")
+        else:
+            conn = sqlite3.connect('minecraft.db')
+            cursor = conn.cursor()
+
+            # 检查用户是否已绑定 game_id
+            cursor.execute('SELECT gameid FROM minecraft WHERE userid = ?', (user_id,))
+            user_result = cursor.fetchone()
+
+            if user_result:
+                await message.reply(content="绑定失败，您已绑定" + f"{user_result[0]}")
+                conn.close()
+                return False
+
+            # 检查是否存在相同的 game_id
+            cursor.execute('SELECT userid FROM minecraft WHERE LOWER(gameid) = LOWER(?)', (game_id,))
+            game_result = cursor.fetchone()
+
+            if game_result:
+                await message.reply(content="此游戏ID已被绑定")
+                conn.close()
+                return False
+
+            cursor.execute('INSERT INTO minecraft (userid, gameid) VALUES (?, ?)', (user_id, game_id))
+            conn.commit()
+            await message.reply(content="绑定成功，您的游戏ID为：" + game_id)
+
+            conn.close()
+    else:
+        await message.reply(content="请输入正确的格式，例如：/绑定 JianMoOvO")
+    return True
+
+
+@Commands("builder")
+async def builder(api: BotAPI, message: GroupMessage, params=None, requests=None):
+    await message.reply(content="如果遇到任何问题需要帮助，请联系群管理员哦~")
+    return True
+
+
+@Commands("admin")
+async def admin(api: BotAPI, message: GroupMessage, params=None, requests=None):
+    await message.reply(content="如果遇到任何问题需要帮助，请联系群管理员哦~")
+    return True
+
+
+@Commands("visitor")
+async def visitor(api: BotAPI, message: GroupMessage, params=None, requests=None):
+    await message.reply(content="如果遇到任何问题需要帮助，请联系群管理员哦~")
+    return True
+
+
 @Commands("帮助")
 async def help(api: BotAPI, message: GroupMessage, params=None, requests=None):
     await message.reply(content="如果遇到任何问题需要帮助，请联系群管理员哦~")
@@ -439,7 +476,11 @@ handlers = [
     jrys,
     forum_hot_discussion,
     mcci,
-    help
+    help,
+    bind,
+    admin,
+    builder,
+    visitor
 ]
 
 
@@ -466,7 +507,7 @@ async def main():
     intents = botpy.Intents(
         public_messages=True
     )
-    client = SitmcClient(intents=intents, is_sandbox=True, log_level=10, timeout=30)
+    client = SitmcClient(intents=intents, is_sandbox=False, log_level=10, timeout=30)
     await client.start(appid=r.appid, secret=r.secret)
     await session.close()
 

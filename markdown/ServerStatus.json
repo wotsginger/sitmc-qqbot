@@ -1,0 +1,48 @@
+{
+	"markdown": {
+		"custom_template_id": "",
+		"params": [{
+				"key": "title",
+				"values": ["SIT-Minecraft"]
+			},
+			{
+				"key": "img_url",
+				"values": [
+					""
+				]
+			},
+			{
+				"key": "tips",
+				"values": [""]
+			},
+			{
+				"key": "text",
+				"values": [""]
+			},
+			{
+				"key": "url",
+				"values": [""]
+			},
+			{
+				"key": "",
+				"values": [""]
+			},
+			{
+				"key": "content2",
+				"values": [""]
+			},
+			{
+				"key": "content3",
+				"values": [""]
+			},
+			{
+				"key": "content4",
+				"values": [""]
+			},
+			{
+				"key": "content5",
+				"values": [""]
+			}
+		]
+	}
+}
