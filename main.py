@@ -507,7 +507,7 @@ async def main():
     intents = botpy.Intents(
         public_messages=True
     )
-    client = SitmcClient(intents=intents, is_sandbox=False, log_level=10, timeout=30)
+    client = SitmcClient(intents=intents, is_sandbox=True, log_level=10, timeout=30)
     await client.start(appid=r.appid, secret=r.secret)
     await session.close()
 
