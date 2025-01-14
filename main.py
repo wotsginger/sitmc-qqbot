@@ -451,7 +451,7 @@ async def world(api: BotAPI, message: GroupMessage, params=None, requests=None):
         conn.close()
         return
 
-    await message.reply(content=f"成功为游戏ID {target_game_id} 设置世界 {world} 管理员权限")
+    await message.reply(content=f"成功为游戏ID {target_game_id} 设置世界 {world} 的管理员")
     conn.close()
 
 
@@ -516,46 +516,79 @@ async def bind(api: BotAPI, message: GroupMessage, params=None, requests=None):
 
 @Commands("builder")
 async def builder(api: BotAPI, message: GroupMessage, params=None, requests=None):
-    await message.reply(content="如果遇到任何问题需要帮助，请联系群管理员哦~")
-    return True
-
-
-@Commands("admin")
-async def admin(api: BotAPI, message: GroupMessage, params=None, requests=None):
     conn = sqlite3.connect('minecraft.db')
-    user_id = f"{message.author.member_openid}"
     cursor = conn.cursor()
+    user_id = f"{message.author.member_openid}"
+    content = f"{message.content}".strip()
 
-    # 检查 minecraft.json 是否存在
-    if not os.path.exists('minecraft.json'):
-        with open('minecraft.json', 'w') as json_file:
-            json.dump({"op": []}, json_file)
+    parts = content.split()
+    if len(parts) < 2:
+        await message.reply(content="指令格式错误，请使用：/builder <玩家ID>")
+        conn.close()
+        return False
 
-    with open('minecraft.json', 'r') as json_file:
-        minecraft_data = json.load(json_file)
+    target_game_id = parts[1]
 
-    cursor.execute("SELECT game_id FROM minecraft WHERE user_id = ?", (user_id,))
-    user_data = cursor.fetchone()
+    cursor.execute("SELECT permission, world FROM minecraft WHERE userid = ?", (user_id,))
+    result = cursor.fetchone()
 
-    if user_data:
-        game_id = user_data[0]
-
-        # 检查该 game_id 是否在 minecraft.json 的 'op' 列表中
-        if game_id in minecraft_data['op']:
-            await message.reply(content="你已经是管理员啦！")
-        else:
-            await message.reply(content="你的游戏ID不在管理员列表中。")
+    if result is None:
+        await message.reply(content="请先输入 /绑定 绑定您的账户")
     else:
-        # 如果在数据库中找不到该用户，提示用户先绑定账户
-        await message.reply(content="请先输入/绑定绑定账户")
-
-
-    await message.reply(content="如果遇到任何问题需要帮助，请联系群管理员哦~")
+        permission, world = result
+        if permission != 'admin':
+            await message.reply(content="您还不是世界管理员哦！")
+        else:
+            try:
+                with MCRcon(r.rcon_host, r.rcon_password, port=20002) as mcr:
+                    command = f"lp user {target_game_id} parent add {world}"
+                    response = mcr.command(command)
+                    command1 = f"mapadmin sync"
+                    response1 = mcr.command(command1)
+                    print(response1, response1)
+                await message.reply(content=f"成功将玩家 {target_game_id} 设置为世界 {world} 的建筑师！")
+            except Exception as e:
+                await message.reply(content=f"执行 RCON 命令时出错")
+    conn.close()
+    return True
 
 
 @Commands("visitor")
 async def visitor(api: BotAPI, message: GroupMessage, params=None, requests=None):
-    await message.reply(content="如果遇到任何问题需要帮助，请联系群管理员哦~")
+    conn = sqlite3.connect('minecraft.db')
+    cursor = conn.cursor()
+    user_id = f"{message.author.member_openid}"
+    content = f"{message.content}".strip()
+
+    parts = content.split()
+    if len(parts) < 2:
+        await message.reply(content="指令格式错误，请使用：/visitor <玩家ID>")
+        conn.close()
+        return False
+
+    target_game_id = parts[1]
+
+    cursor.execute("SELECT permission, world FROM minecraft WHERE userid = ?", (user_id,))
+    result = cursor.fetchone()
+
+    if result is None:
+        await message.reply(content="请先输入 /绑定 绑定您的账户")
+    else:
+        permission, world = result
+        if permission != 'admin':
+            await message.reply(content="您还不是世界管理员哦！")
+        else:
+            try:
+                with MCRcon(r.rcon_host, r.rcon_password, port=20002) as mcr:
+                    command = f"lp user {target_game_id} permission set multiverse.access.{world}"
+                    response = mcr.command(command)
+                    command1 = f"mapadmin sync"
+                    response1 = mcr.command(command1)
+                    print(response1, response1)
+                await message.reply(content=f"成功将玩家 {target_game_id} 设置为世界 {world} 的访客！")
+            except Exception as e:
+                await message.reply(content=f"执行 RCON 命令时出错")
+    conn.close()
     return True
 
 
@@ -574,7 +607,6 @@ handlers = [
     mcci,
     help,
     bind,
-    admin,
     builder,
     visitor,
     world
