@@ -111,9 +111,48 @@ async def query_weather(api: BotAPI, message: GroupMessage, params=None):
         return True
 
 
-@Commands("服务器状态")
 async def query_sitmc_server(api: BotAPI, message: GroupMessage, params=None):
-    await query_sitmc_server(api, message, params)
+    async with session.post(f"https://mc.sjtu.cn/custom/serverlist/?query=play.sitmc.club") as res:
+        result = await res.json()
+        if res.ok:
+            server_info = result
+            description = server_info.get('description_raw', {}).get('extra', [{}])[0].get('text', '无描述')
+            players_max = server_info.get('players', {}).get('max', '未知')
+            players_online = server_info.get('players', {}).get('online', '未知')
+            version = server_info.get('version', '未知')
+
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            random_image = random.choice(["1.jpg", "2.jpg", "3.jpg"])
+            image_url = f"https://tietu.mclists.cn/banner/purple/7685/{random_image}"
+
+            uploadmedia = await api.post_group_file(
+                group_openid=message.group_openid,
+                file_type=1,
+                url=image_url
+            )
+
+            reply_content = (
+                f"\n"
+                f"服务器名称: SIT-Minecraft\n"
+                f"描述: {description}\n"
+                f"在线玩家: {players_online}/{players_max}\n"
+                f"版本: {version}\n"
+                f"查询时间: {timestamp}"
+            )
+
+            await message.reply(
+                content=reply_content,
+                msg_type=7,
+                media=uploadmedia
+            )
+        else:
+            error_content = (
+                f"查询SITMC服务器信息失败\n"
+                f"状态码: {res.status}\n"
+                f"响应内容: {result}"
+            )
+            await message.reply(content=error_content)
+        return True
 
 
 @Commands("一言")
