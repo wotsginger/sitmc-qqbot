@@ -3,3 +3,5 @@ user_numbers.db
 botpy.log
 .env
 /temp
+/minecraft.db
+/ServerStatus.py

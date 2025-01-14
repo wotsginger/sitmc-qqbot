@@ -389,10 +389,6 @@ async def mcci(api: BotAPI, message: GroupMessage, params=None, requests=None):
     return True
 
 
-import sqlite3
-import os
-import json
-
 @Commands("world")
 async def world(api: BotAPI, message: GroupMessage, params=None, requests=None):
     conn = sqlite3.connect('minecraft.db')
@@ -410,52 +406,60 @@ async def world(api: BotAPI, message: GroupMessage, params=None, requests=None):
         minecraft_data = json.load(json_file)
 
     # 查询用户绑定的 game_id
-    cursor.execute("SELECT game_id FROM users WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT gameid FROM minecraft WHERE userid = ?", (user_id,))
     user_data = cursor.fetchone()
 
     if not user_data:
         await message.reply(content="请先输入 /绑定 绑定您的账户")
+        conn.close()
         return
 
     game_id = user_data[0]
 
-    if game_id in minecraft_data['op']:
-        # 解析 content 的值
-        try:
-            _, target_game_id, world = content.split()
-        except ValueError:
-            await message.reply(content="命令格式错误，请使用 /world [id] [world]")
-            return
-
-        cursor.execute(
-            "UPDATE users SET world = ?, permission = 'admin' WHERE game_id = ?",
-            (world, target_game_id)
-        )
-        conn.commit()
-
-        try:
-            with MCRcon(r.rcon_host, r.rcon_password, port={r.rcon_port}) as mcr:
-                command = f"whitelist add {target_game_id}"
-                response = mcr.command(command)
-                await message.reply(content=f"RCON 命令执行成功: {response}")
-        except Exception as e:
-            await message.reply(content=f"RCON 命令执行失败: {str(e)}")
-
-        await message.reply(content=f"成功为游戏ID {target_game_id} 设置世界 {world} 管理员权限")
-    else:
+    if game_id not in minecraft_data['op']:
         await message.reply(content="你的游戏ID不在管理员列表中，请联系管理员设置世界管理员")
+        conn.close()
+        return
 
-    # 关闭数据库连接
+    # 解析 content 的值
+    try:
+        _, target_game_id, world = content.split()
+    except ValueError:
+        await message.reply(content="命令格式错误，请使用 /world [id] [world]")
+        conn.close()
+        return
+
+    # 设置权限
+    cursor.execute(
+        "UPDATE minecraft SET world = ?, permission = 'admin' WHERE gameid = ?",
+        (world, target_game_id)
+    )
+    conn.commit()
+
+
+    try:
+        with MCRcon(r.rcon_host, r.rcon_password, port=20002) as mcr:
+            command1 = f"lp user {target_game_id} permission set mapmanager.admin.{world}"
+            response1 = mcr.command(command1)
+            command2 = f"lp user {target_game_id} parent add {world}"
+            response2 = mcr.command(command2)
+            command3 = f"mapadmin sync"
+            response3 = mcr.command(command3)
+            print(response1, response2, response3)
+    except Exception as e:
+        await message.reply(content="执行失败，RCON错误")
+        conn.close()
+        return
+
+    await message.reply(content=f"成功为游戏ID {target_game_id} 设置世界 {world} 管理员权限")
     conn.close()
-    return True
-
 
 
 @Commands("绑定")
 async def bind(api: BotAPI, message: GroupMessage, params=None, requests=None):
+    # 创建数据库连接并初始化表
     conn = sqlite3.connect('minecraft.db')
     cursor = conn.cursor()
-
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS minecraft (
             userid TEXT PRIMARY KEY,
@@ -469,42 +473,44 @@ async def bind(api: BotAPI, message: GroupMessage, params=None, requests=None):
 
     user_id = f"{message.author.member_openid}"
     content = f"{message.content}".strip()
-    print(content)
-    if " " in content:
-        command, *rest = content.split(" ", 1)
-        game_id = rest[0].strip() if rest else ""
 
-        if not re.fullmatch(r"[A-Za-z0-9_]{3,16}", game_id):
-            await message.reply(content="ID只能包含字母、数字或下划线，长度应在3到16个字符之间")
-        else:
-            conn = sqlite3.connect('minecraft.db')
-            cursor = conn.cursor()
-
-            # 检查用户是否已绑定 game_id
-            cursor.execute('SELECT gameid FROM minecraft WHERE userid = ?', (user_id,))
-            user_result = cursor.fetchone()
-
-            if user_result:
-                await message.reply(content="绑定失败，您已绑定" + f"{user_result[0]}")
-                conn.close()
-                return False
-
-            # 检查是否存在相同的 game_id
-            cursor.execute('SELECT userid FROM minecraft WHERE LOWER(gameid) = LOWER(?)', (game_id,))
-            game_result = cursor.fetchone()
-
-            if game_result:
-                await message.reply(content="此游戏ID已被绑定")
-                conn.close()
-                return False
-
-            cursor.execute('INSERT INTO minecraft (userid, gameid) VALUES (?, ?)', (user_id, game_id))
-            conn.commit()
-            await message.reply(content="绑定成功，您的游戏ID为：" + game_id)
-
-            conn.close()
-    else:
+    if " " not in content:
         await message.reply(content="请输入正确的格式，例如：/绑定 JianMoOvO")
+        return  # 停止执行
+
+    _, *rest = content.split(" ", 1)
+    game_id = rest[0].strip() if rest else ""
+
+    # 校验游戏ID格式
+    if not re.fullmatch(r"[A-Za-z0-9_]{3,16}", game_id):
+        await message.reply(content="ID只能包含字母、数字或下划线，长度应在3到16个字符之间")
+        return  # 停止执行
+
+    conn = sqlite3.connect('minecraft.db')
+    cursor = conn.cursor()
+
+    # 检查用户是否已绑定 game_id
+    cursor.execute('SELECT gameid FROM minecraft WHERE userid = ?', (user_id,))
+    user_result = cursor.fetchone()
+    if user_result:
+        await message.reply(content=f"绑定失败，您已绑定 {user_result[0]}")
+        conn.close()
+        return  # 停止执行
+
+    # 检查是否存在相同的 game_id
+    cursor.execute('SELECT userid FROM minecraft WHERE LOWER(gameid) = LOWER(?)', (game_id,))
+    game_result = cursor.fetchone()
+    if game_result:
+        await message.reply(content="此游戏ID已被绑定")
+        conn.close()
+        return  # 停止执行
+
+    # 插入新的绑定记录
+    cursor.execute('INSERT INTO minecraft (userid, gameid) VALUES (?, ?)', (user_id, game_id))
+    conn.commit()
+    conn.close()
+
+    await message.reply(content=f"绑定成功，您的游戏ID为：{game_id}")
     return True
 
 
@@ -528,7 +534,7 @@ async def admin(api: BotAPI, message: GroupMessage, params=None, requests=None):
     with open('minecraft.json', 'r') as json_file:
         minecraft_data = json.load(json_file)
 
-    cursor.execute("SELECT game_id FROM users WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT game_id FROM minecraft WHERE user_id = ?", (user_id,))
     user_data = cursor.fetchone()
 
     if user_data:
@@ -570,7 +576,8 @@ handlers = [
     bind,
     admin,
     builder,
-    visitor
+    visitor,
+    world
 ]
 
 
