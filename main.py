@@ -111,6 +111,7 @@ async def query_weather(api: BotAPI, message: GroupMessage, params=None):
         return True
 
 
+@Commands("服务器状态")
 async def query_sitmc_server(api: BotAPI, message: GroupMessage, params=None):
     async with session.post(f"https://mc.sjtu.cn/custom/serverlist/?query=play.sitmc.club") as res:
         result = await res.json()
