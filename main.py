@@ -495,6 +495,110 @@ async def world(api: BotAPI, message: GroupMessage, params=None, requests=None):
     conn.close()
 
 
+@Commands("command")
+async def command(api: BotAPI, message: GroupMessage, params=None, requests=None):
+    conn = sqlite3.connect('minecraft.db')
+    cursor = conn.cursor()
+    user_id = f"{message.author.member_openid}"
+    content = f"{message.content}".strip()
+
+    if not os.path.exists('minecraft.json'):
+        with open('minecraft.json', 'w') as json_file:
+            json.dump({"op": []}, json_file)
+
+    with open('minecraft.json', 'r') as json_file:
+        minecraft_data = json.load(json_file)
+
+    # 查询用户绑定的 game_id
+    cursor.execute("SELECT gameid FROM minecraft WHERE userid = ?", (user_id,))
+    user_data = cursor.fetchone()
+
+    if not user_data:
+        await message.reply(content="请先输入 /绑定 绑定您的账户")
+        conn.close()
+        return
+
+    game_id = user_data[0]
+
+    if game_id not in minecraft_data['op']:
+        await message.reply(content="你的游戏ID不在管理员列表中")
+        conn.close()
+        return
+
+    try:
+        _, command_args = content.split(" ", 1)
+    except ValueError:
+        await message.reply(content="命令格式错误，请使用 /command [命令内容]")
+        conn.close()
+        return
+
+    try:
+        with MCRcon(r.rcon_host, r.rcon_password, port=20002) as mcr:
+            response = mcr.command(command_args)
+    except Exception as e:
+        await message.reply(content="执行失败，RCON错误")
+        conn.close()
+        return
+
+    await message.reply(content=f"\n{response}")
+    conn.close()
+
+
+@Commands("render")
+async def render(api: BotAPI, message: GroupMessage, params=None, requests=None):
+    conn = sqlite3.connect('minecraft.db')
+    cursor = conn.cursor()
+    user_id = f"{message.author.member_openid}"
+    content = f"{message.content}".strip()
+
+    # 检查 minecraft.json 是否存在
+    if not os.path.exists('minecraft.json'):
+        with open('minecraft.json', 'w') as json_file:
+            json.dump({"op": []}, json_file)
+
+    # 加载 minecraft.json 数据
+    with open('minecraft.json', 'r') as json_file:
+        minecraft_data = json.load(json_file)
+
+    # 查询用户绑定的 game_id
+    cursor.execute("SELECT gameid FROM minecraft WHERE userid = ?", (user_id,))
+    user_data = cursor.fetchone()
+
+    if not user_data:
+        await message.reply(content="请先输入 /绑定 绑定您的账户")
+        conn.close()
+        return
+
+    game_id = user_data[0]
+
+    if game_id not in minecraft_data['op']:
+        await message.reply(content="你的游戏ID不在管理员列表中")
+        conn.close()
+        return
+
+    # 解析 content 的值
+    try:
+        _, world = content.split()
+        print(world)
+    except ValueError:
+        await message.reply(content="命令格式错误，请使用 /render [world]")
+        conn.close()
+        return
+
+
+    try:
+        with MCRcon(r.rcon_host, r.rcon_password, port=20002) as mcr:
+            command1 = f"dynmap fullrender {world}"
+            response1 = mcr.command(command1)
+    except Exception as e:
+        await message.reply(content="执行失败，RCON错误")
+        conn.close()
+        return
+
+    await message.reply(content=f"世界 {world} 的网页地图已开始重新渲染！")
+    conn.close()
+
+
 @Commands("绑定")
 async def bind(api: BotAPI, message: GroupMessage, params=None, requests=None):
     # 创建数据库连接并初始化表
@@ -649,7 +753,9 @@ handlers = [
     bind,
     builder,
     visitor,
-    world
+    world,
+    render,
+    command
 ]
 
 
