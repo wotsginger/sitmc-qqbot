@@ -32,7 +32,6 @@ _log = botpy.logging.get_logger()
 session: aiohttp.ClientSession
 
 
-
 def upload_file(file_path, remote_path, token):
     upload_url = "https://temp.sitmc.club/admin"
     data = {
@@ -44,7 +43,6 @@ def upload_file(file_path, remote_path, token):
     headers = {
         'Authorization': token
     }
-
 
     response = requests.put(upload_url, data=data, files=files, headers=headers)
 
@@ -113,39 +111,47 @@ async def query_weather(api: BotAPI, message: GroupMessage, params=None):
 
 @Commands("服务器状态")
 async def query_sitmc_server(api: BotAPI, message: GroupMessage, params=None):
-    async with session.post(f"https://mc.sjtu.cn/custom/serverlist/?query=play.sitmc.club") as res:
-        result = await res.json()
+    async with aiohttp.ClientSession() as session:
+        res, res1 = await asyncio.gather(
+            session.get(f"https://query.sitmc.club/play.sitmc.club"),
+            session.get(f"https://query.sitmc.club/mod.sitmc.club")
+        )
+
+        if res.ok:
+            result = await res.json()
+            result1 = await res1.json()
         if res.ok:
             server_info = result
-            description = server_info.get('description_raw', {}).get('extra', [{}])[0].get('text', '无描述')
+            description = server_info.get('description', {}).get('text', '未知')
             players_max = server_info.get('players', {}).get('max', '未知')
             players_online = server_info.get('players', {}).get('online', '未知')
             version = server_info.get('version', '未知')
+
+            server_info1 = result1
+            description1 = server_info1.get('description', {}).get('text', '未知')
+            players_max1 = server_info1.get('players', {}).get('max', '未知')
+            players_online1 = server_info1.get('players', {}).get('online', '未知')
+            version1 = server_info1.get('version', '未知')
 
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
             random_image = random.choice(["1.jpg", "2.jpg", "3.jpg"])
             image_url = f"https://tietu.mclists.cn/banner/purple/7685/{random_image}"
 
-            uploadmedia = await api.post_group_file(
-                group_openid=message.group_openid,
-                file_type=1,
-                url=image_url
-            )
-
             reply_content = (
                 f"\n"
-                f"服务器名称: SIT-Minecraft\n"
+                f"SIT-Minecraft 主服务器\n"
                 f"描述: {description}\n"
                 f"在线玩家: {players_online}/{players_max}\n"
                 f"版本: {version}\n"
+                f"==============\n"
+                f"SIT-Minecraft 模组服\n"
+                f"描述: {description1}\n"
+                f"在线玩家: {players_online1}/{players_max1}\n"
+                f"版本: {version1}\n"
                 f"查询时间: {timestamp}"
             )
 
-            await message.reply(
-                content=reply_content,
-                msg_type=7,
-                media=uploadmedia
-            )
+            await message.reply(content=reply_content)
         else:
             error_content = (
                 f"查询SITMC服务器信息失败\n"
@@ -363,6 +369,7 @@ async def forum_hot_discussion(api: BotAPI, message: GroupMessage, params=None, 
             await message.reply(content=reply_content)
     return True
 
+
 @Commands("mcci")
 async def mcci(api: BotAPI, message: GroupMessage, params=None, requests=None):
     params = {"raw": params}
@@ -375,7 +382,6 @@ async def mcci(api: BotAPI, message: GroupMessage, params=None, requests=None):
 
         soup = BeautifulSoup(html, 'html.parser')
         error_message = soup.find("p", class_="text-center text-xl text-neutral-900 dark:text-neutral-100 py-2")
-
 
     if error_message and "I couldn't find any data for that player!" in error_message.text:
         await message.reply(content="我在Mccisland找不到这个玩家的数据哦(；′⌒`)")
@@ -475,7 +481,6 @@ async def world(api: BotAPI, message: GroupMessage, params=None, requests=None):
         (world, target_game_id)
     )
     conn.commit()
-
 
     try:
         with MCRcon(r.rcon_host, r.rcon_password, port=20002) as mcr:
@@ -584,7 +589,6 @@ async def render(api: BotAPI, message: GroupMessage, params=None, requests=None)
         await message.reply(content="命令格式错误，请使用 /render [world]")
         conn.close()
         return
-
 
     try:
         with MCRcon(r.rcon_host, r.rcon_password, port=20002) as mcr:
@@ -741,6 +745,31 @@ async def help(api: BotAPI, message: GroupMessage, params=None, requests=None):
     await message.reply(content="如果遇到任何问题需要帮助，请联系群管理员哦~")
     return True
 
+
+@Commands("tick")
+async def tick_command(api: BotAPI, message: GroupMessage, params=None, requests=None):
+    content = message.content.strip()
+    parts = content.split()
+
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.reply(content="指令格式错误，请使用：/tick <数字>")
+        return False
+
+    tick_value = parts[1]
+    host = "110.42.98.44"
+    password = ""
+    print(tick_value)
+
+    try:
+        with MCRcon(host, password, port=50011) as mcr:
+            response = mcr.command(f"tick rate {tick_value}")
+        await message.reply(content=f"游戏现在按照 {tick_value} 每秒运行")
+    except Exception:
+        await message.reply(content="执行 RCON 命令时出错")
+
+    return True
+
+
 handlers = [
     query_weather,
     query_sitmc_server,
@@ -755,7 +784,8 @@ handlers = [
     visitor,
     world,
     render,
-    command
+    command,
+    tick_command
 ]
 
 
@@ -782,7 +812,7 @@ async def main():
     intents = botpy.Intents(
         public_messages=True
     )
-    client = SitmcClient(intents=intents, is_sandbox=True, log_level=10, timeout=30)
+    client = SitmcClient(intents=intents, is_sandbox=False, log_level=10, timeout=30)
     await client.start(appid=r.appid, secret=r.secret)
     await session.close()
 
